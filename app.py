@@ -9,7 +9,8 @@ import plotly.express as px
 st.set_page_config(
     page_title="E-Commerce Sales Intelligence",
     page_icon="📊",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # ==========================================
@@ -68,24 +69,26 @@ button[data-baseweb="tab"] {
 # LOAD DATA
 # ==========================================
 
-@st.cache_data
+
 def load_data():
 
     master = pd.read_csv("olist_master_powerbi.csv")
 
-    rfm = pd.read_csv("rfm_segments.csv")
+    return master
 
-    state = pd.read_csv("state_summary.csv")
+master = load_data()
 
-    sellers = pd.read_csv("top_sellers.csv")
+# ==========================================
+# DATA PREPARATION
+# ==========================================
 
-    cohort = pd.read_csv("cohort_retention.csv")
+master["order_purchase_timestamp"] = pd.to_datetime(
+    master["order_purchase_timestamp"]
+)
 
-    monthly = pd.read_csv("monthly_revenue.csv")
-
-    return master, rfm, state, sellers, cohort, monthly
-
-master, rfm, state, sellers, cohort, monthly = load_data()
+master["order_month"] = pd.to_datetime(
+    master["order_month"]
+)
 
 # ==========================================
 # SIDEBAR FILTERS
@@ -101,11 +104,18 @@ selected_year = st.sidebar.selectbox(
     index=len(years)-1
 )
 
+# ==========================================
+# FILTER DATA
+# ==========================================
+
 filtered_master = master[
     master["order_year"] == selected_year
 ]
 
-# Download button
+# ==========================================
+# DOWNLOAD BUTTON
+# ==========================================
+
 csv = filtered_master.to_csv(index=False)
 
 st.sidebar.download_button(
@@ -124,6 +134,12 @@ st.title("📊 E-Commerce Sales Intelligence Dashboard")
 st.markdown("""
 Interactive Business Intelligence Dashboard built using
 Streamlit + SQL + Python Analytics
+""")
+
+st.markdown("""
+[🔗 GitHub Repository](https://github.com/farhan-3141/ecommerce-sales-intelligence)
+|
+[🚀 Live Dashboard](https://ecommerce-sales-intelligence-farhan.streamlit.app/)
 """)
 
 # ==========================================
@@ -167,6 +183,134 @@ col4.metric(
 st.markdown("---")
 
 # ==========================================
+# CREATE DYNAMIC ANALYTICS
+# ==========================================
+
+# Ensure datetime conversion
+filtered_master["order_purchase_timestamp"] = pd.to_datetime(
+    filtered_master["order_purchase_timestamp"]
+)
+
+# ------------------------------------------
+# MONTHLY REVENUE
+# ------------------------------------------
+
+monthly = (
+    filtered_master
+    .groupby(
+        filtered_master["order_purchase_timestamp"].dt.to_period("M")
+    )
+    .agg(
+        total_revenue=("price", "sum")
+    )
+    .reset_index()
+)
+
+monthly["order_month"] = monthly[
+    "order_purchase_timestamp"
+].astype(str)
+
+# ------------------------------------------
+# RFM ANALYSIS
+# ------------------------------------------
+
+customer_rfm = (
+    filtered_master
+    .groupby("customer_city")
+    .agg(
+        frequency=("order_id", "nunique"),
+        monetary=("price", "sum")
+    )
+    .reset_index()
+)
+
+customer_rfm["Segment"] = "Low Value"
+
+customer_rfm.loc[
+    customer_rfm["monetary"] > 100,
+    "Segment"
+] = "Medium Value"
+
+customer_rfm.loc[
+    customer_rfm["monetary"] > 500,
+    "Segment"
+] = "High Value"
+
+customer_rfm.loc[
+    customer_rfm["monetary"] > 1000,
+    "Segment"
+] = "Champions"
+rfm_counts = (
+    customer_rfm["Segment"]
+    .value_counts()
+    .reset_index()
+)
+
+rfm_counts.columns = [
+    "Segment",
+    "Customers"
+]
+
+segment_revenue = (
+    customer_rfm
+    .groupby("Segment")["monetary"]
+    .sum()
+    .reset_index()
+)
+
+# ------------------------------------------
+# SELLER ANALYSIS
+# ------------------------------------------
+
+seller_analysis = (
+    filtered_master
+    .groupby("seller_id")
+    .agg(
+        total_revenue=("price", "sum"),
+        total_orders=("order_id", "nunique")
+    )
+    .reset_index()
+    .sort_values(
+        "total_revenue",
+        ascending=False
+    )
+    .head(10)
+)
+
+# ------------------------------------------
+# STATE ANALYSIS
+# ------------------------------------------
+
+state_analysis = (
+    filtered_master
+    .groupby("customer_state")
+    .agg(
+        total_orders=("order_id", "nunique"),
+        avg_delivery_days=("delivery_days", "mean"),
+        avg_review=("review_score", "mean")
+    )
+    .reset_index()
+)
+
+# ------------------------------------------
+# RETENTION ANALYSIS
+# ------------------------------------------
+
+cohort_analysis = (
+    filtered_master
+    .groupby(
+        filtered_master["order_purchase_timestamp"].dt.to_period("M")
+    )
+    .agg(
+        total_customers=("customer_city", "nunique")
+    )
+    .reset_index()
+)
+
+cohort_analysis["order_month"] = cohort_analysis[
+    "order_purchase_timestamp"
+].astype(str)
+# ==========================================
 # DASHBOARD TABS
 # ==========================================
 
@@ -187,16 +331,12 @@ with tab1:
 
     st.subheader("📈 Monthly Revenue Trend")
 
-    monthly["order_month"] = pd.to_datetime(
-        monthly["order_month"]
-    )
-
     fig = px.line(
         monthly,
         x="order_month",
         y="total_revenue",
         markers=True,
-        title="Monthly Revenue Growth",
+        title=f"Monthly Revenue Growth - {selected_year}",
         height=500
     )
 
@@ -219,22 +359,11 @@ with tab2:
 
     st.subheader("👥 RFM Customer Segmentation")
 
-    rfm_counts = (
-        rfm["rfm_segment"]
-        .value_counts()
-        .reset_index()
-    )
-
-    rfm_counts.columns = [
-        "Segment",
-        "Customers"
-    ]
-
     fig_rfm = px.pie(
         rfm_counts,
         names="Segment",
         values="Customers",
-        title="Customer Distribution by RFM Segment"
+        title=f"Customer Segmentation - {selected_year}"
     )
 
     st.plotly_chart(
@@ -242,20 +371,12 @@ with tab2:
         use_container_width=True
     )
 
-    # Revenue by segment
-
-    segment_revenue = (
-        rfm.groupby("rfm_segment")["monetary"]
-        .sum()
-        .reset_index()
-    )
-
     fig_bar = px.bar(
         segment_revenue,
-        x="rfm_segment",
+        x="Segment",
         y="monetary",
-        title="Revenue Contribution by Segment",
-        color="rfm_segment"
+        title=f"Revenue by Segment - {selected_year}",
+        color="Segment"
     )
 
     st.plotly_chart(
@@ -273,7 +394,7 @@ with tab3:
 
     fig_sellers = px.bar(
 
-        sellers,
+        seller_analysis,
 
         x="seller_id",
 
@@ -281,7 +402,7 @@ with tab3:
 
         color="total_revenue",
 
-        title="Top Sellers by Revenue"
+        title=f"Top Sellers - {selected_year}"
     )
 
     fig_sellers.update_layout(
@@ -306,26 +427,21 @@ with tab4:
 
     st.subheader("🌎 State-wise Order Analysis")
 
-    state_chart = state.sort_values(
-        "total_orders",
-        ascending=False
-    )
-
     fig_state = px.bar(
 
-        state_chart,
+        state_analysis,
 
         x="customer_state",
 
         y="total_orders",
 
-        color="on_time_pct",
+        color="avg_review",
 
-        title="Orders by Brazilian State",
+        title=f"Orders by State - {selected_year}",
 
         hover_data=[
             "avg_delivery_days",
-            "on_time_pct"
+            "avg_review"
         ]
     )
 
@@ -349,32 +465,22 @@ with tab4:
 
 with tab5:
 
-    st.subheader("📅 Cohort Retention Analysis")
+    st.subheader("📅 Customer Retention Trend")
 
-    fig_cohort = px.imshow(
+    fig_cohort = px.area(
 
-        cohort[["retention_pct"]].T,
+        cohort_analysis,
 
-        text_auto=True,
+        x="order_month",
 
-        aspect="auto",
+        y="total_customers",
 
-        color_continuous_scale="Blues",
-
-        labels=dict(
-            x="Cohort Month",
-            y="Retention",
-            color="Retention %"
-        )
-    )
-
-    fig_cohort.update_xaxes(
-        tickvals=list(range(len(cohort))),
-        ticktext=cohort["cohort_month"]
+        title=f"Customer Activity Trend - {selected_year}"
     )
 
     fig_cohort.update_layout(
-        title="Customer Retention Heatmap"
+        xaxis_title="Month",
+        yaxis_title="Active Customers"
     )
 
     st.plotly_chart(
@@ -390,32 +496,50 @@ with tab6:
 
     st.subheader("🧠 Executive Business Insights")
 
-    st.success("""
-    ✅ Revenue shows strong month-over-month growth trends.
+    top_state = (
+        state_analysis
+        .sort_values(
+            "total_orders",
+            ascending=False
+        )
+        .iloc[0]["customer_state"]
+    )
+
+    top_segment = (
+        segment_revenue
+        .sort_values(
+            "monetary",
+            ascending=False
+        )
+        .iloc[0]["Segment"]
+    )
+
+    st.success(f"""
+    ✅ Highest revenue observed in {selected_year}.
     """)
 
-    st.info("""
-    📦 High-value customer segments contribute majority revenue.
+    st.info(f"""
+    📦 Top customer segment: {top_segment}
     """)
 
-    st.warning("""
-    🚚 Delivery delays negatively impact customer review scores.
+    st.warning(f"""
+    🚚 State with highest orders: {top_state}
     """)
 
     st.error("""
-    🏪 Top sellers dominate marketplace revenue contribution.
+    🏪 Top sellers contribute major marketplace revenue.
     """)
 
     st.markdown("---")
 
     st.subheader("📌 Business Recommendations")
 
-    st.markdown("""
-    - Improve logistics infrastructure in high-delay states.
-    - Launch loyalty programs for high-value customers.
-    - Support underperforming sellers with onboarding programs.
-    - Reduce delivery delays to improve customer satisfaction.
-    - Focus marketing campaigns on high-retention customer segments.
+    st.markdown(f"""
+    - Focus marketing campaigns on high-value customers in {selected_year}.
+    - Improve logistics efficiency in high-volume states.
+    - Retain top-performing sellers through incentives.
+    - Optimize customer experience to improve review ratings.
+    - Expand operations in high-performing regions.
     """)
 
 # ==========================================
