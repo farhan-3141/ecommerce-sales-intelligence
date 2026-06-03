@@ -1,18 +1,20 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
-# --------------------------------
-# Page Config
-# --------------------------------
+# ==========================================
+# PAGE CONFIG
+# ==========================================
 
 st.set_page_config(
     page_title="E-Commerce Sales Intelligence",
     page_icon="📊",
     layout="wide"
 )
-# --------------------------------
-# Custom Dashboard Styling
-# --------------------------------
+
+# ==========================================
+# CUSTOM CSS
+# ==========================================
 
 st.markdown("""
 <style>
@@ -22,18 +24,19 @@ st.markdown("""
     background-color: #F8FAFC;
 }
 
-/* KPI metric cards */
+/* KPI Cards */
 [data-testid="metric-container"] {
     background-color: white;
     border: 1px solid #E5E7EB;
-    padding: 15px;
+    padding: 18px;
     border-radius: 12px;
-    box-shadow: 0px 2px 6px rgba(0,0,0,0.05);
+    box-shadow: 0px 2px 8px rgba(0,0,0,0.06);
 }
 
 /* Sidebar */
 section[data-testid="stSidebar"] {
     background-color: #111827;
+    width: 260px !important;
 }
 
 /* Sidebar text */
@@ -46,6 +49,13 @@ h1, h2, h3 {
     color: #111827;
 }
 
+/* Tabs */
+button[data-baseweb="tab"] {
+    font-size: 18px;
+    font-weight: 600;
+    padding: 10px 20px;
+}
+
 /* Chart spacing */
 .block-container {
     padding-top: 2rem;
@@ -53,9 +63,10 @@ h1, h2, h3 {
 
 </style>
 """, unsafe_allow_html=True)
-# --------------------------------
-# Load Data
-# --------------------------------
+
+# ==========================================
+# LOAD DATA
+# ==========================================
 
 @st.cache_data
 def load_data():
@@ -75,39 +86,49 @@ def load_data():
     return master, rfm, state, sellers, cohort, monthly
 
 master, rfm, state, sellers, cohort, monthly = load_data()
-# --------------------------------
-# Sidebar Filters
-# --------------------------------
+
+# ==========================================
+# SIDEBAR FILTERS
+# ==========================================
 
 st.sidebar.header("📌 Dashboard Filters")
 
-# Available years
 years = sorted(master["order_year"].dropna().unique())
 
 selected_year = st.sidebar.selectbox(
     "Select Year",
-    years
+    years,
+    index=len(years)-1
 )
 
-# Filter dataset
 filtered_master = master[
     master["order_year"] == selected_year
 ]
 
-# --------------------------------
-# Dashboard Title
-# --------------------------------
+# Download button
+csv = filtered_master.to_csv(index=False)
+
+st.sidebar.download_button(
+    label="📥 Download Filtered Data",
+    data=csv,
+    file_name="filtered_data.csv",
+    mime="text/csv"
+)
+
+# ==========================================
+# DASHBOARD TITLE
+# ==========================================
 
 st.title("📊 E-Commerce Sales Intelligence Dashboard")
 
 st.markdown("""
-Interactive Business Intelligence Dashboard
-built using Streamlit + SQL + Python Analytics
+Interactive Business Intelligence Dashboard built using
+Streamlit + SQL + Python Analytics
 """)
 
-# --------------------------------
-# KPI Calculations
-# --------------------------------
+# ==========================================
+# KPI CALCULATIONS
+# ==========================================
 
 total_revenue = filtered_master["price"].sum()
 
@@ -117,14 +138,15 @@ avg_order = filtered_master["price"].mean()
 
 avg_review = filtered_master["review_score"].mean()
 
-# KPI Cards
-# --------------------------------
+# ==========================================
+# KPI CARDS
+# ==========================================
 
 col1, col2, col3, col4 = st.columns(4)
 
 col1.metric(
     "Total Revenue",
-    f"R$ {total_revenue:,.0f}"
+    f"R$ {total_revenue/1000:.1f}K"
 )
 
 col2.metric(
@@ -142,221 +164,271 @@ col4.metric(
     f"{avg_review:.2f} ⭐"
 )
 
+st.markdown("---")
 
-# --------------------------------
-# Sample Data
-# --------------------------------
+# ==========================================
+# DASHBOARD TABS
+# ==========================================
 
-st.subheader("📦 Sample Dataset")
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "📊 Overview",
+    "👥 Customer Analytics",
+    "🏪 Seller Analytics",
+    "🌎 Geographic Insights",
+    "📅 Retention Analytics",
+    "🧠 Executive Insights"
+])
 
-st.dataframe(filtered_master.head(10))
+# ==========================================
+# TAB 1 — OVERVIEW
+# ==========================================
 
-# --------------------------------
-# Revenue Trend Chart
-# --------------------------------
+with tab1:
 
-import plotly.express as px
+    st.subheader("📈 Monthly Revenue Trend")
 
-st.subheader("📈 Monthly Revenue Trend")
-
-# Convert month column
-monthly["order_month"] = pd.to_datetime(
-    monthly["order_month"]
-)
-
-# Create line chart
-fig = px.line(
-    monthly,
-    x="order_month",
-    y="total_revenue",
-    markers=True,
-    title="Monthly Revenue Growth"
-)
-
-# Improve layout
-fig.update_layout(
-    xaxis_title="Month",
-    yaxis_title="Revenue (R$)",
-    template="plotly_white"
-)
-
-# Display chart
-st.plotly_chart(
-    fig,
-    use_container_width=True
-)
-
-# --------------------------------
-# RFM Segment Analysis
-# --------------------------------
-
-st.subheader("👥 RFM Customer Segmentation")
-
-# Count segments
-rfm_counts = (
-    rfm["rfm_segment"]
-    .value_counts()
-    .reset_index()
-)
-
-rfm_counts.columns = [
-    "Segment",
-    "Customers"
-]
-
-# Pie Chart
-fig_rfm = px.pie(
-    rfm_counts,
-    names="Segment",
-    values="Customers",
-    title="Customer Distribution by RFM Segment"
-)
-
-st.plotly_chart(
-    fig_rfm,
-    use_container_width=True
-)
-
-# --------------------------------
-# Revenue by Segment
-# --------------------------------
-
-segment_revenue = (
-    rfm.groupby("rfm_segment")["monetary"]
-    .sum()
-    .reset_index()
-)
-
-fig_bar = px.bar(
-    segment_revenue,
-    x="rfm_segment",
-    y="monetary",
-    title="Revenue Contribution by Segment",
-    color="rfm_segment"
-)
-
-st.plotly_chart(
-    fig_bar,
-    use_container_width=True
-)
-# --------------------------------
-# Seller Performance Analysis
-# --------------------------------
-
-st.subheader("🏪 Top Seller Performance")
-
-# Top sellers chart
-fig_sellers = px.bar(
-
-    sellers,
-
-    x="seller_id",
-
-    y="total_revenue",
-
-    color="total_revenue",
-
-    title="Top Sellers by Revenue"
-)
-
-# Improve layout
-fig_sellers.update_layout(
-
-    xaxis_title="Seller ID",
-
-    yaxis_title="Revenue (R$)",
-
-    xaxis_tickangle=-45
-)
-
-# Display chart
-st.plotly_chart(
-    fig_sellers,
-    use_container_width=True
-)
-# --------------------------------
-# Geographic State Analysis
-# --------------------------------
-
-st.subheader("🌎 State-wise Order Analysis")
-
-# Sort states
-state_chart = state.sort_values(
-    "total_orders",
-    ascending=False
-)
-
-# Create chart
-fig_state = px.bar(
-
-    state_chart,
-
-    x="customer_state",
-
-    y="total_orders",
-
-    color="on_time_pct",
-
-    title="Orders by Brazilian State",
-
-    hover_data=[
-        "avg_delivery_days",
-        "on_time_pct"
-    ]
-)
-
-# Layout improvements
-fig_state.update_layout(
-
-    xaxis_title="State",
-
-    yaxis_title="Total Orders",
-
-    template="plotly_white"
-)
-
-# Display chart
-st.plotly_chart(
-    fig_state,
-    use_container_width=True
-)
-# --------------------------------
-# Cohort Retention Analysis
-# --------------------------------
-
-st.subheader("📅 Cohort Retention Analysis")
-
-# Create heatmap-style chart
-fig_cohort = px.imshow(
-
-    cohort[["retention_pct"]].T,
-
-    text_auto=True,
-
-    aspect="auto",
-
-    color_continuous_scale="Blues",
-
-    labels=dict(
-        x="Cohort Month",
-        y="Retention",
-        color="Retention %"
+    monthly["order_month"] = pd.to_datetime(
+        monthly["order_month"]
     )
-)
 
-# Update x-axis labels
-fig_cohort.update_xaxes(
-    tickvals=list(range(len(cohort))),
-    ticktext=cohort["cohort_month"]
-)
+    fig = px.line(
+        monthly,
+        x="order_month",
+        y="total_revenue",
+        markers=True,
+        title="Monthly Revenue Growth",
+        height=500
+    )
 
-# Layout
-fig_cohort.update_layout(
-    title="Customer Retention Heatmap"
-)
+    fig.update_layout(
+        xaxis_title="Month",
+        yaxis_title="Revenue (R$)",
+        template="plotly_white"
+    )
 
-# Display chart
-st.plotly_chart(
-    fig_cohort,
-    use_container_width=True
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
+
+# ==========================================
+# TAB 2 — CUSTOMER ANALYTICS
+# ==========================================
+
+with tab2:
+
+    st.subheader("👥 RFM Customer Segmentation")
+
+    rfm_counts = (
+        rfm["rfm_segment"]
+        .value_counts()
+        .reset_index()
+    )
+
+    rfm_counts.columns = [
+        "Segment",
+        "Customers"
+    ]
+
+    fig_rfm = px.pie(
+        rfm_counts,
+        names="Segment",
+        values="Customers",
+        title="Customer Distribution by RFM Segment"
+    )
+
+    st.plotly_chart(
+        fig_rfm,
+        use_container_width=True
+    )
+
+    # Revenue by segment
+
+    segment_revenue = (
+        rfm.groupby("rfm_segment")["monetary"]
+        .sum()
+        .reset_index()
+    )
+
+    fig_bar = px.bar(
+        segment_revenue,
+        x="rfm_segment",
+        y="monetary",
+        title="Revenue Contribution by Segment",
+        color="rfm_segment"
+    )
+
+    st.plotly_chart(
+        fig_bar,
+        use_container_width=True
+    )
+
+# ==========================================
+# TAB 3 — SELLER ANALYTICS
+# ==========================================
+
+with tab3:
+
+    st.subheader("🏪 Top Seller Performance")
+
+    fig_sellers = px.bar(
+
+        sellers,
+
+        x="seller_id",
+
+        y="total_revenue",
+
+        color="total_revenue",
+
+        title="Top Sellers by Revenue"
+    )
+
+    fig_sellers.update_layout(
+
+        xaxis_title="Seller ID",
+
+        yaxis_title="Revenue (R$)",
+
+        xaxis_tickangle=-45
+    )
+
+    st.plotly_chart(
+        fig_sellers,
+        use_container_width=True
+    )
+
+# ==========================================
+# TAB 4 — GEOGRAPHIC INSIGHTS
+# ==========================================
+
+with tab4:
+
+    st.subheader("🌎 State-wise Order Analysis")
+
+    state_chart = state.sort_values(
+        "total_orders",
+        ascending=False
+    )
+
+    fig_state = px.bar(
+
+        state_chart,
+
+        x="customer_state",
+
+        y="total_orders",
+
+        color="on_time_pct",
+
+        title="Orders by Brazilian State",
+
+        hover_data=[
+            "avg_delivery_days",
+            "on_time_pct"
+        ]
+    )
+
+    fig_state.update_layout(
+
+        xaxis_title="State",
+
+        yaxis_title="Total Orders",
+
+        template="plotly_white"
+    )
+
+    st.plotly_chart(
+        fig_state,
+        use_container_width=True
+    )
+
+# ==========================================
+# TAB 5 — RETENTION ANALYTICS
+# ==========================================
+
+with tab5:
+
+    st.subheader("📅 Cohort Retention Analysis")
+
+    fig_cohort = px.imshow(
+
+        cohort[["retention_pct"]].T,
+
+        text_auto=True,
+
+        aspect="auto",
+
+        color_continuous_scale="Blues",
+
+        labels=dict(
+            x="Cohort Month",
+            y="Retention",
+            color="Retention %"
+        )
+    )
+
+    fig_cohort.update_xaxes(
+        tickvals=list(range(len(cohort))),
+        ticktext=cohort["cohort_month"]
+    )
+
+    fig_cohort.update_layout(
+        title="Customer Retention Heatmap"
+    )
+
+    st.plotly_chart(
+        fig_cohort,
+        use_container_width=True
+    )
+
+# ==========================================
+# TAB 6 — EXECUTIVE INSIGHTS
+# ==========================================
+
+with tab6:
+
+    st.subheader("🧠 Executive Business Insights")
+
+    st.success("""
+    ✅ Revenue shows strong month-over-month growth trends.
+    """)
+
+    st.info("""
+    📦 High-value customer segments contribute majority revenue.
+    """)
+
+    st.warning("""
+    🚚 Delivery delays negatively impact customer review scores.
+    """)
+
+    st.error("""
+    🏪 Top sellers dominate marketplace revenue contribution.
+    """)
+
+    st.markdown("---")
+
+    st.subheader("📌 Business Recommendations")
+
+    st.markdown("""
+    - Improve logistics infrastructure in high-delay states.
+    - Launch loyalty programs for high-value customers.
+    - Support underperforming sellers with onboarding programs.
+    - Reduce delivery delays to improve customer satisfaction.
+    - Focus marketing campaigns on high-retention customer segments.
+    """)
+
+# ==========================================
+# FOOTER
+# ==========================================
+
+st.markdown("---")
+
+st.markdown(
+    """
+    <center>
+    Built with ❤️ by <b>Farhan Ansari</b> | IIT (ISM) Dhanbad
+    </center>
+    """,
+    unsafe_allow_html=True
 )
