@@ -2,7 +2,7 @@
 
 ## 🚀 Live Dashboard
 
-🔗 https://ecommerce-sales-intelligence-agvowtat3sf4wqqh9zqxv2.streamlit.app/
+🔗 https://ecommerce-sales-intelligence-farhan.streamlit.app/
 
 ---
 
